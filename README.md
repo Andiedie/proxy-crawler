@@ -22,3 +22,11 @@ s.get_best_server()
 s.download()
 s.results
 ```
+
+http://www.ruanyifeng.com/blog/2018/03/systemd-timer.html
+
+爬取代理
+逐个写测试 JSON、启动 v2ray、测试速度
+按速度排序，取前 5/10 个
+然后写正式 JSON
+重启 systemctl
