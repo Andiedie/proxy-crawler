@@ -2,6 +2,7 @@
 
 http://cachefly.cachefly.net/speedtest/?ref=driverlayer.com/web
 
+```python
 #%%
 os.environ['http_proxy'] = 'http://127.0.0.1:1087'
 os.environ['https_proxy'] = 'http://127.0.0.1:1087'
@@ -20,3 +21,4 @@ s = speedtest.Speedtest()
 s.get_best_server()
 s.download()
 s.results
+```
