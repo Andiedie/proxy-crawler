@@ -8,9 +8,10 @@ config_path = pathlib.Path(__file__).parent.joinpath('v2ray_config.json').resolv
 
 def gen_test_conf(port: int, servers: List[Server]):
     config = {
-        'log': {
-            'access': ''
-        },
+        # 'log': {
+        #     'access': '',
+        #     'error': ''
+        # },
         'inbounds': [{
             'port': port,
             'listen': '127.0.0.1',

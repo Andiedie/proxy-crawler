@@ -48,7 +48,7 @@ class Server:
 
     def to_config_obj(self, tag: str):
         if self.type == ServerType.vmess:
-            return {
+            obj =  {
                 'tag': tag,
                 'protocol': 'vmess',
                 'settings': {
@@ -64,17 +64,6 @@ class Server:
                 'streamSettings': {
                     'network': self.vmess_network,
                     'security': self.vmess_security,
-                    'wsSettings': {
-                        'path': self.vmess_path,
-                        'headers': {
-                            'Host': self.vmess_host
-                        }
-                    },
-                    'tcpSettings': {
-                        'header': {
-                            'type': self.vmess_header_type
-                        }
-                    },
                     'tlsSettings': {
                         'allowInsecure': self.vmess_allow_insecure
                     }
@@ -84,6 +73,27 @@ class Server:
                     'concurrency': self.vmess_concurrency
                 }
             }
+            if self.vmess_network == 'ws':
+                obj['streamSettings']['wsSettings'] = {}
+                if self.vmess_path != '':
+                    obj['streamSettings']['wsSettings']['path'] = self.vmess_path
+                if self.vmess_host != '':
+                    obj['streamSettings']['wsSettings']['headers'] = {
+                        'Host': self.vmess_host
+                    }
+            if self.vmess_network == 'tcp':
+                obj['streamSettings']['tcpSettings'] = {
+                    'header': {
+                        'type': self.vmess_header_type
+                    }
+                }
+            if self.vmess_network == 'kcp':
+                obj['streamSettings']['kcpSettings'] = {
+                    'header': {
+                        'type': self.vmess_header_type
+                    }
+                }
+            return obj
         if self.type == ServerType.shadowsocks:
             return {
                 'tag': tag,
@@ -151,7 +161,7 @@ def vmess1(v: str) -> Server:
 
     s.vmess_id = obj.get('id', '')
     s.vmess_alter_id = int(obj.get('aid', '0'))
-    s.vmess_network = obj.get('network', 'tcp')
+    s.vmess_network = obj.get('net', 'tcp')
     s.vmess_security = obj.get('scy', 'none')
     s.vmess_path = obj.get('path', '')
     s.vmess_host = obj.get('host', '')
