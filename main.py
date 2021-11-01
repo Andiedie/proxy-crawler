@@ -1,28 +1,31 @@
-from gevent import monkey
+import os
+import signal
 import uuid
 import time
 import requests
 import base64
 import conf
 import net
-import parser
+from v2ray import Server, parse
 from typing import List
 from subprocess import run, DEVNULL, Popen
 import gevent.pool
 from itertools import groupby
 import logger
+from gevent import monkey
+
 monkey.patch_socket()
 
 log = logger.get_logger('proxy-crawler')
 
-assert run(['which', 'v2ray'], stdout=DEVNULL).returncode == 0, 'v2ray is not installed.'
+assert run(['v2ray', '--version'], stdout=DEVNULL).returncode == 0, 'v2ray is not installed.'
 
 sources = [
     'https://cdn.jsdelivr.net/gh/freefq/free/v2',
     'https://jiang.netlify.app'
 ]
 
-servers: List[parser.Server] = []
+servers: List[Server] = []
 # 爬取节点
 for link in sources:
     log.info('fetching servers from %s', link)
@@ -35,7 +38,7 @@ for link in sources:
         sub = sub.strip()
         if sub == '':
             continue
-        server = parser.parse(sub)
+        server = parse(sub)
         server.extra['source'] = link
         server.extra['subscribe'] = sub
         server.extra['uuid'] = uuid.uuid4().hex
@@ -61,15 +64,14 @@ log.info('dedup servers: %d', len(servers))
 port = net.get_free_port()
 log.info('using port %d', port)
 
-log.info('config path %s', conf.config_path)
+log.info('test config path %s', conf.test_config_path)
 conf.gen_test_conf(port, servers)
-
 
 tested_count = 0
 
 
 # 测试速度
-def net_test(s: parser.Server):
+def net_test(s: Server):
     global tested_count
     # log.debug(f'{s} start ping')
     ping = net.ping(port, s.extra['uuid'])
@@ -87,7 +89,7 @@ def net_test(s: parser.Server):
 
 
 # 使用 v2ray
-p = Popen(['v2ray', '--config=%s' % conf.config_path],
+p = Popen(['v2ray', '--config=%s' % conf.test_config_path],
           stdout=DEVNULL
           )
 time.sleep(1)
@@ -97,19 +99,18 @@ pool.map(net_test, servers)
 
 p.kill()
 
-
 available_cnt = len([
     s for s in servers
-    if s.extra.get("ping", net.unavailable) != net.unavailable and
-    s.extra.get("download", net.no_speed) != net.no_speed
+    if s.extra.get("ping", net.unavailable) != net.unavailable
+    and s.extra.get("download", net.no_speed) != net.no_speed
 ])
 log.info(f'available server {available_cnt}/{len(servers)}')
-log.info('\t\n'.join([
+log.info('\n\t'.join([
     '(%d/%d) %s' % (
         len([
             s for s in group
-            if s.extra.get("ping", net.unavailable) != net.unavailable and
-               s.extra.get("download", net.no_speed) != net.no_speed
+            if s.extra.get("ping", net.unavailable) != net.unavailable
+            and s.extra.get("download", net.no_speed) != net.no_speed
         ]),
         len(list(group)),
         key
@@ -117,7 +118,6 @@ log.info('\t\n'.join([
     for key, group in
     [(key, list(group)) for key, group in groupby(servers, key=lambda x: x.extra["source"])]
 ]))
-
 
 # 取前十
 servers = sorted(servers,
@@ -129,7 +129,9 @@ log.info('final servers:\n\t%s' % '\n\t'.join([
     for s in servers
 ]))
 
+# 生成 JSON
+log.info('gen outbound configs in path %s', conf.real_config_path)
+conf.gen_conf(servers)
+
 if __name__ == '__main__':
     pass
-
-# 生成 JSON

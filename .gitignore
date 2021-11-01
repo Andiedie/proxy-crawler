@@ -1,4 +1,5 @@
 v2ray_config.json
+outbounds/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
