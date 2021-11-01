@@ -19,22 +19,21 @@ class Server:
     extra: dict
 
     # for vmess
-    vmess_id: str
-    vmess_alter_id: int
-    # streamSettings
-    vmess_network: str = 'tcp'
-    # tls or none(default)
-    vmess_security: str = 'none'
-    # wsSettings
-    vmess_path: str = ''
-    vmess_host: str = ''
-    # TcpObject
-    vmess_header_type: str = 'none'
-    # TLSObject
-    vmess_allow_insecure: bool = False
-    # mux
-    vmess_mux: bool = False
-    vmess_concurrency: int = 0
+    vmess_user_id: str
+    vmess_user_alter_id: int
+    vmess_user_security: str
+
+    stream_settings_network: str
+    stream_settings_security: str
+
+    ws_settings_path: str
+    ws_settings_host: str
+
+    tls_settings_allow_insecure: bool
+    tls_settings_server_name: str
+
+    mux_enable: bool
+    mux_concurrency: int
 
     # for ss
     ss_method: str
@@ -48,7 +47,7 @@ class Server:
 
     def to_config_obj(self, tag: str):
         if self.type == ServerType.vmess:
-            obj =  {
+            obj = {
                 'tag': tag,
                 'protocol': 'vmess',
                 'settings': {
@@ -56,43 +55,33 @@ class Server:
                         'address': self.address,
                         'port': self.port,
                         'users': [{
-                            'id': self.vmess_id,
-                            'alterId': self.vmess_alter_id
+                            'id': self.vmess_user_id,
+                            'alterId': self.vmess_user_alter_id,
+                            'security': self.vmess_user_security
                         }]
                     }]
                 },
                 'streamSettings': {
-                    'network': self.vmess_network,
-                    'security': self.vmess_security,
+                    'network': self.stream_settings_network,
+                    'security': self.stream_settings_security,
                     'tlsSettings': {
-                        'allowInsecure': self.vmess_allow_insecure
+                        'allowInsecure': self.tls_settings_allow_insecure,
+                        'serverName': self.tls_settings_server_name
                     }
                 },
                 'mux': {
-                    'enabled': self.vmess_mux,
-                    'concurrency': self.vmess_concurrency
+                    'enabled': self.mux_enable,
+                    'concurrency': self.mux_concurrency
                 }
             }
-            if self.vmess_network == 'ws':
+            if self.stream_settings_network == 'ws':
                 obj['streamSettings']['wsSettings'] = {}
-                if self.vmess_path != '':
-                    obj['streamSettings']['wsSettings']['path'] = self.vmess_path
-                if self.vmess_host != '':
+                if self.ws_settings_path != '':
+                    obj['streamSettings']['wsSettings']['path'] = self.ws_settings_path
+                if self.ws_settings_host != '':
                     obj['streamSettings']['wsSettings']['headers'] = {
-                        'Host': self.vmess_host
+                        'Host': self.ws_settings_host
                     }
-            if self.vmess_network == 'tcp':
-                obj['streamSettings']['tcpSettings'] = {
-                    'header': {
-                        'type': self.vmess_header_type
-                    }
-                }
-            if self.vmess_network == 'kcp':
-                obj['streamSettings']['kcpSettings'] = {
-                    'header': {
-                        'type': self.vmess_header_type
-                    }
-                }
             return obj
         if self.type == ServerType.shadowsocks:
             return {
@@ -132,7 +121,7 @@ class Server:
             'type': self.type,
             'address': self.address,
             'port': self.port,
-            'vmess_id': self.vmess_id if self.type == 'vmess' else ''
+            'vmess_id': self.vmess_user_id if self.type == 'vmess' else ''
         }))
 
 
@@ -159,13 +148,21 @@ def vmess1(v: str) -> Server:
     s.address = obj.get('add', '')
     s.port = int(obj.get('port', '0'))
 
-    s.vmess_id = obj.get('id', '')
-    s.vmess_alter_id = int(obj.get('aid', '0'))
-    s.vmess_network = obj.get('net', 'tcp')
-    s.vmess_security = obj.get('scy', 'none')
-    s.vmess_path = obj.get('path', '')
-    s.vmess_host = obj.get('host', '')
-    s.vmess_header_type = obj.get('type', 'none')
+    s.vmess_user_id = obj.get('id', '')
+    s.vmess_user_alter_id = int(obj.get('aid', '0'))
+    s.vmess_user_security = obj.get('scy', 'none')
+
+    s.stream_settings_network = obj.get('net', 'tcp')
+    s.stream_settings_security = obj.get('tls', 'none')
+
+    s.ws_settings_path = obj.get('path', '')
+    s.ws_settings_host = obj.get('host', '')
+
+    s.tls_settings_allow_insecure = False
+    s.tls_settings_server_name = obj.get('sni', '')
+
+    s.mux_enable = False
+    s.mux_concurrency = 8
 
     return s
 
@@ -182,14 +179,21 @@ def vmess2(v: str) -> Server:
     s.address = match.group('host')
     s.port = int(match.group('port'))
 
-    s.vmess_id = match.group('id')
-    s.vmess_alter_id = int(qs_get(qs, 'aid', '0'))
-    s.vmess_network = qs_get(qs, 'network')
-    s.vmess_security = 'tls' if qs_get(qs, 'tls', '0') == '1' else 'none'
-    s.vmess_path = qs_get(qs, 'path')
-    s.vmess_allow_insecure = qs_get(qs, 'allowInsecure', '0') == '1'
-    s.vmess_mux = qs_get(qs, 'mux', '0') == '1'
-    s.vmess_concurrency = int(qs_get(qs, 'muxConcurrency', '8'))
+    s.vmess_user_id = match.group('id')
+    s.vmess_user_alter_id = int(qs_get(qs, 'aid', '0'))
+    s.vmess_user_security = match.group('method')
+
+    s.stream_settings_network = qs_get(qs, 'network')
+    s.stream_settings_security = 'tls' if qs_get(qs, 'tls', '0') == '1' else 'none'
+
+    s.ws_settings_path = qs_get(qs, 'path')
+    s.ws_settings_host = ''
+
+    s.tls_settings_allow_insecure = qs_get(qs, 'allowInsecure', '0') == '1'
+    s.tls_settings_server_name = ''
+
+    s.mux_enable = qs_get(qs, 'mux', '0') == '1'
+    s.mux_concurrency = int(qs_get(qs, 'muxConcurrency', '8'))
 
     return s
 

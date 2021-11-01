@@ -2,7 +2,6 @@ from gevent import monkey
 import uuid
 import time
 import requests
-import logging
 import base64
 import conf
 import net
@@ -11,23 +10,15 @@ from typing import List
 from subprocess import run, DEVNULL, Popen
 import gevent.pool
 from itertools import groupby
+import logger
 monkey.patch_socket()
 
-
-log = logging.getLogger('proxy-crawler')
-log.setLevel(logging.DEBUG)
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
-ch.setFormatter(logging.Formatter('%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s:\n\t%(message)s',
-                                  '%Y-%m-%d %H:%M:%S'))
-log.addHandler(ch)
+log = logger.get_logger('proxy-crawler')
 
 assert run(['which', 'v2ray'], stdout=DEVNULL).returncode == 0, 'v2ray is not installed.'
 
 sources = [
     'https://cdn.jsdelivr.net/gh/freefq/free/v2',
-    'https://cdn.jsdelivr.net/gh/StormragerCN/v2ray/v2ray',
-    'https://cdn.jsdelivr.net/gh/eycorsican/rule-sets/kitsunebi_sub',
     'https://jiang.netlify.app'
 ]
 
@@ -44,13 +35,12 @@ for link in sources:
         sub = sub.strip()
         if sub == '':
             continue
-        # log.debug(sub)
         server = parser.parse(sub)
         server.extra['source'] = link
         server.extra['subscribe'] = sub
         server.extra['uuid'] = uuid.uuid4().hex
-        # log.debug(server)
         servers.append(server)
+        # print(server, server.extra)
 
 log.info('servers: %d', len(servers))
 
@@ -59,6 +49,7 @@ dedup_map = {}
 dedup_servers = []
 for server in servers:
     if server.port == 0 or hash(server) in dedup_map:
+        # print('duplicated', server, server.extra)
         continue
     dedup_map[hash(server)] = True
     dedup_servers.append(server)
@@ -80,11 +71,13 @@ tested_count = 0
 # 测试速度
 def net_test(s: parser.Server):
     global tested_count
+    # log.debug(f'{s} start ping')
     ping = net.ping(port, s.extra['uuid'])
     if ping == net.unavailable:
         tested_count += 1
         log.info(f'({tested_count}/{len(servers)}) {s} unavailable, subscribe: {s.extra["subscribe"]}')
         return
+    # log.debug(f'{s} start speedtest')
     download = net.speedtest(port, s.extra['uuid'])
     s.extra['ping'] = ping
     s.extra['download'] = download
@@ -99,10 +92,7 @@ p = Popen(['v2ray', '--config=%s' % conf.config_path],
           )
 time.sleep(1)
 
-pool = gevent.pool.Pool(3)
-proxy = {
-    'http': f'http://localhost:{port}',
-}
+pool = gevent.pool.Pool(5)
 pool.map(net_test, servers)
 
 p.kill()
@@ -115,7 +105,7 @@ available_cnt = len([
 ])
 log.info(f'available server {available_cnt}/{len(servers)}')
 log.info('\t\n'.join([
-    '(%d / %d) %s' % (
+    '(%d/%d) %s' % (
         len([
             s for s in group
             if s.extra.get("ping", net.unavailable) != net.unavailable and
