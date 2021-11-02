@@ -39,6 +39,9 @@ for link in sources:
         if sub == '':
             continue
         server = parse(sub)
+        if server is None:
+            log.warning(f'unsupported subscribe {sub}')
+            continue
         server.extra['source'] = link
         server.extra['subscribe'] = sub
         server.extra['uuid'] = uuid.uuid4().hex
