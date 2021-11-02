@@ -62,6 +62,7 @@ def speedtest(port: int, ua: str, download_bytes=1024*1024*20) -> int:
         timeout = gevent.Timeout(20)
         timeout.start()
         try:
+            # noinspection HttpUrlsUsage
             resp = requests.get(f'http://speed.cloudflare.com/__down?measId={uuid.uuid4()}&bytes={download_bytes}',
                                 proxies={'http': f'http://127.0.0.1:{port}'},
                                 headers={'User-Agent': ua})

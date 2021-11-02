@@ -3,6 +3,7 @@ import json
 from strenum import StrEnum
 from urllib.parse import urlparse, unquote, parse_qs
 import re
+from typing import Optional
 
 
 class ServerType(StrEnum):
@@ -26,9 +27,6 @@ class Server:
     stream_settings_network: str
     stream_settings_security: str
 
-    ws_settings_path: str
-    ws_settings_host: str
-
     tls_settings_allow_insecure: bool
     tls_settings_server_name: str
 
@@ -38,9 +36,6 @@ class Server:
     # for ss
     ss_method: str
     ss_password: str
-
-    # for trojan
-    trojan_password: str
 
     def __init__(self):
         self.extra = {}
@@ -74,14 +69,6 @@ class Server:
                     'concurrency': self.mux_concurrency
                 }
             }
-            if self.stream_settings_network == 'ws':
-                obj['streamSettings']['wsSettings'] = {}
-                if self.ws_settings_path != '':
-                    obj['streamSettings']['wsSettings']['path'] = self.ws_settings_path
-                if self.ws_settings_host != '':
-                    obj['streamSettings']['wsSettings']['headers'] = {
-                        'Host': self.ws_settings_host
-                    }
             return obj
         if self.type == ServerType.shadowsocks:
             return {
@@ -96,22 +83,11 @@ class Server:
                     }]
                 }
             }
-        if self.type == ServerType.trojan:
-            return {
-                'tag': tag,
-                'protocol': 'trojan',
-                'settings': {
-                    'servers': [{
-                        'address': self.address,
-                        'port': self.port,
-                        'password': self.trojan_password
-                    }]
-                }
-            }
 
     def __str__(self):
-        return '{remark}({address}:{port})'.format(
+        return '{remark}({protocol}//{address}:{port})'.format(
             remark=self.remark,
+            protocol=self.type.name,
             address=self.address,
             port=self.port
         )
@@ -127,7 +103,6 @@ class Server:
 
 vmess_protocol = 'vmess://'
 shadowsocks_protocol = 'ss://'
-trojan_protocol = 'trojan://'
 
 
 def b64decode(v: str) -> str:
@@ -138,7 +113,7 @@ def qs_get(d: dict, v: str, default='') -> str:
     return d.get(v, [default])[0]
 
 
-def vmess1(v: str) -> Server:
+def vmess1(v: str) -> Optional[Server]:
     v = v[len(vmess_protocol):]
     obj: dict = json.loads(b64decode(v))
 
@@ -155,8 +130,8 @@ def vmess1(v: str) -> Server:
     s.stream_settings_network = obj.get('net', 'tcp')
     s.stream_settings_security = obj.get('tls', 'none')
 
-    s.ws_settings_path = obj.get('path', '')
-    s.ws_settings_host = obj.get('host', '')
+    if s.stream_settings_network == 'ws':
+        return None
 
     s.tls_settings_allow_insecure = False
     s.tls_settings_server_name = obj.get('sni', '')
@@ -167,7 +142,7 @@ def vmess1(v: str) -> Server:
     return s
 
 
-def vmess2(v: str) -> Server:
+def vmess2(v: str) -> Optional[Server]:
     parsed = urlparse(v)
     detail = b64decode(parsed.netloc)
     qs = parse_qs(parsed.query)
@@ -186,8 +161,8 @@ def vmess2(v: str) -> Server:
     s.stream_settings_network = qs_get(qs, 'network')
     s.stream_settings_security = 'tls' if qs_get(qs, 'tls', '0') == '1' else 'none'
 
-    s.ws_settings_path = qs_get(qs, 'path')
-    s.ws_settings_host = ''
+    if s.stream_settings_network == 'ws':
+        return None
 
     s.tls_settings_allow_insecure = qs_get(qs, 'allowInsecure', '0') == '1'
     s.tls_settings_server_name = ''
@@ -233,20 +208,6 @@ def shadowsocks2(v: str) -> Server:
     return s
 
 
-def trojan(v: str) -> Server:
-    parsed = urlparse(v, allow_fragments=True)
-
-    s = Server()
-    s.type = ServerType.trojan
-    s.remark = unquote(parsed.fragment)
-    s.address = parsed.hostname
-    s.port = int(parsed.port)
-
-    s.trojan_password = parsed.username
-
-    return s
-
-
 def parse(v: str) -> Server:
     if v.startswith(vmess_protocol) and '?' not in v:
         return vmess1(v)
@@ -256,19 +217,11 @@ def parse(v: str) -> Server:
         return shadowsocks1(v)
     if v.startswith(shadowsocks_protocol) and '@' not in v:
         return shadowsocks2(v)
-    if v.startswith(trojan_protocol):
-        return trojan(v)
 
 
 if __name__ == '__main__':
-    print(vmess1(
-        'vmess://eyJ2IjogIjIiLCAicHMiOiAiZ2l0aHViLmNvbS9mcmVlZnEgLSBcdTRmYzRcdTdmNTdcdTY1YWYgIDE0IiwgImFkZCI6ICJ2Mi5zc3JzdWIuY29tIiwgInBvcnQiOiAiMTU4IiwgImlkIjogIjZkNmQ5OWIwLWJlOGEtNDNiYy1hZDczLTJmYjBmMTU5NTc5MyIsICJhaWQiOiAiMCIsICJzY3kiOiAiYXV0byIsICJuZXQiOiAid3MiLCAidHlwZSI6ICJub25lIiwgImhvc3QiOiAiIiwgInBhdGgiOiAiL3NzcnN1YiIsICJ0bHMiOiAidGxzIiwgInNuaSI6ICIifQ=='))
-    print(vmess2(
-        'vmess://Y2hhY2hhMjAtcG9seTEzMDU6OTUxMzc4NTctNzBmYS00YWM4LThmOTAtNDIyMGFlYjY2MmNmQHVuaS5raXRzdW5lYmkuZnVuOjQ0NA==?network=kcp&uplinkCapacity=1&downlinkCapacity=4&aid=0&tls=0&allowInsecure=1&mux=1&muxConcurrency=8&remark=KCP%20Test%20Outbound'))
-    print(shadowsocks1(
-        'ss://YWVzLTI1Ni1nY206Rm9PaUdsa0FBOXlQRUdQ@167.88.63.60:7306#github.com/freefq%20-%20%E7%91%9E%E5%85%B8%20%2013'))
-    print(shadowsocks2(
-        'ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpZYXp1WjJaRTlwNVJuM0NBTktsRDZTcUMwT1RTeVhCSVJleXBhY0Q0RmFlOGd4ODdsT0QzU1kzM2pGQXdDeEAxNTQuMTcuMi41NDoxODMzMw==#%f0%9f%87%ba%f0%9f%87%b8US_49'))
-    print(trojan(
-        'trojan://5b092e88-82d8-47eb-a7a2-98bcf02754e9@t4.ssrsub.com:8443#github.com/freefq%20-%20%E4%BF%84%E7%BD%97%E6%96%AF%20%2020'))
+    print(vmess1('vmess://eyJ2IjogIjIiLCAicHMiOiAiZ2l0aHViLmNvbS9mcmVlZnEgLSBcdTRmYzRcdTdmNTdcdTY1YWYgIDE0IiwgImFkZCI6ICJ2Mi5zc3JzdWIuY29tIiwgInBvcnQiOiAiMTU4IiwgImlkIjogIjZkNmQ5OWIwLWJlOGEtNDNiYy1hZDczLTJmYjBmMTU5NTc5MyIsICJhaWQiOiAiMCIsICJzY3kiOiAiYXV0byIsICJuZXQiOiAid3MiLCAidHlwZSI6ICJub25lIiwgImhvc3QiOiAiIiwgInBhdGgiOiAiL3NzcnN1YiIsICJ0bHMiOiAidGxzIiwgInNuaSI6ICIifQ=='))
+    print(vmess2('vmess://Y2hhY2hhMjAtcG9seTEzMDU6OTUxMzc4NTctNzBmYS00YWM4LThmOTAtNDIyMGFlYjY2MmNmQHVuaS5raXRzdW5lYmkuZnVuOjQ0NA==?network=kcp&uplinkCapacity=1&downlinkCapacity=4&aid=0&tls=0&allowInsecure=1&mux=1&muxConcurrency=8&remark=KCP%20Test%20Outbound'))
+    print(shadowsocks1('ss://YWVzLTI1Ni1nY206Rm9PaUdsa0FBOXlQRUdQ@167.88.63.60:7306#github.com/freefq%20-%20%E7%91%9E%E5%85%B8%20%2013'))
+    print(shadowsocks2('ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpZYXp1WjJaRTlwNVJuM0NBTktsRDZTcUMwT1RTeVhCSVJleXBhY0Q0RmFlOGd4ODdsT0QzU1kzM2pGQXdDeEAxNTQuMTcuMi41NDoxODMzMw==#%f0%9f%87%ba%f0%9f%87%b8US_49'))
     print(shadowsocks1('ss://YWVzLTI1Ni1nY206YTc4MTcyYjM@1.fbplay.net:10100#%E9%9F%A9%E5%9B%BD-4.45MB/s'))

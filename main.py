@@ -1,5 +1,3 @@
-import os
-import signal
 import uuid
 import time
 import requests
