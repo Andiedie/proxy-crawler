@@ -30,6 +30,9 @@ class Server:
     tls_settings_allow_insecure: bool
     tls_settings_server_name: str
 
+    websocket_setting_path: str
+    websocket_setting_headers_host: str
+
     mux_enable: bool
     mux_concurrency: int
 
@@ -69,6 +72,14 @@ class Server:
                     'concurrency': self.mux_concurrency
                 }
             }
+            if self.stream_settings_network == 'ws':
+                obj['streamSettings']['wsSettings'] = {
+                    'path': self.websocket_setting_path
+                }
+                if self.websocket_setting_headers_host != '':
+                    obj['streamSettings']['wsSettings']['headers'] = {
+                        'Host': self.websocket_setting_headers_host
+                    }
             return obj
         if self.type == ServerType.shadowsocks:
             return {
@@ -85,9 +96,10 @@ class Server:
             }
 
     def __str__(self):
-        return '{remark}({protocol}//{address}:{port})'.format(
+        return '{remark}({protocol}@{netwrok}//{address}:{port})'.format(
             remark=self.remark,
             protocol=self.type.name,
+            netwrok=self.stream_settings_network if self.type == ServerType.vmess else '',
             address=self.address,
             port=self.port
         )
@@ -130,8 +142,8 @@ def vmess1(v: str) -> Optional[Server]:
     s.stream_settings_network = obj.get('net', 'tcp')
     s.stream_settings_security = obj.get('tls', 'none')
 
-    if s.stream_settings_network == 'ws':
-        return None
+    s.websocket_setting_path = obj.get('path', '/')
+    s.websocket_setting_headers_host = obj.get('host', '')
 
     s.tls_settings_allow_insecure = False
     s.tls_settings_server_name = obj.get('sni', '')
@@ -161,8 +173,8 @@ def vmess2(v: str) -> Optional[Server]:
     s.stream_settings_network = qs_get(qs, 'network')
     s.stream_settings_security = 'tls' if qs_get(qs, 'tls', '0') == '1' else 'none'
 
-    if s.stream_settings_network == 'ws':
-        return None
+    s.websocket_setting_path = qs_get(qs, 'path', '/')
+    s.websocket_setting_headers_host = qs_get(qs, 'host', 'host')
 
     s.tls_settings_allow_insecure = qs_get(qs, 'allowInsecure', '0') == '1'
     s.tls_settings_server_name = ''
@@ -173,7 +185,7 @@ def vmess2(v: str) -> Optional[Server]:
     return s
 
 
-def shadowsocks1(v: str) -> Server:
+def shadowsocks1(v: str) -> Optional[Server]:
     parsed = urlparse(v, allow_fragments=True)
     b64 = parsed.username
     b64 += "=" * ((4 - len(b64) % 4) % 4)
@@ -188,10 +200,13 @@ def shadowsocks1(v: str) -> Server:
     s.ss_method = detail.split(':')[0]
     s.ss_password = detail.split(':')[1]
 
+    if s.ss_method == 'aes-256-cfb':
+        return None
+
     return s
 
 
-def shadowsocks2(v: str) -> Server:
+def shadowsocks2(v: str) -> Optional[Server]:
     parsed = urlparse(v, allow_fragments=True)
     detail = b64decode(parsed.netloc)
     match = re.match(r'^(?P<method>.+):(?P<pwd>.+)@(?P<host>.+):(?P<port>.+)$', detail)
@@ -204,6 +219,9 @@ def shadowsocks2(v: str) -> Server:
 
     s.ss_method = match.group('method')
     s.ss_password = match.group('pwd')
+
+    if s.ss_method == 'aes-256-cfb':
+        return None
 
     return s
 

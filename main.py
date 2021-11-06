@@ -19,8 +19,8 @@ log = logger.get_logger('proxy-crawler')
 assert run(['v2ray', '--version'], stdout=DEVNULL).returncode == 0, 'v2ray is not installed.'
 
 sources = [
+    'https://jiang.netlify.app',
     'https://cdn.jsdelivr.net/gh/freefq/free/v2',
-    'https://jiang.netlify.app'
 ]
 
 servers: List[Server] = []
